@@ -8,7 +8,10 @@ import type { ClassKey } from "@/i18n";
 // simplified shape per street, copied from the sister project Toronto Open
 // Street Parking, with each street's parking class added by
 // scripts/build_data.py). Hand-rolled SVG overlay over Esri World Street
-// Map tiles (keyless), Web Mercator math, drag to pan, buttons to zoom.
+// Map tiles (keyless), Web Mercator math. Pointer gestures: one finger or
+// mouse drag pans, two-finger pinch zooms (fractional zoom, tiles are
+// drawn from the nearest integer tile zoom and scaled), buttons zoom in
+// steps. Selecting a street fits the map to that street's full shape.
 
 interface MapProps {
   street: string;
@@ -22,6 +25,12 @@ interface MapFeature {
   bbox: [number, number, number, number]; // minLon, minLat, maxLon, maxLat
 }
 
+interface View {
+  z: number;
+  cx: number;
+  cy: number;
+}
+
 const TILE_URL =
   "https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile";
 
@@ -31,6 +40,9 @@ export const CLASS_COLOURS: Record<ClassKey, string> = {
   nofree: "#b23a2e",
   winter: "#7d5ba6",
 };
+
+const MIN_Z = 10;
+const MAX_Z = 17;
 
 function worldSize(z: number) {
   return 256 * Math.pow(2, z);
@@ -72,29 +84,87 @@ function distToSegment(
   return Math.hypot(px - cx, py - cy);
 }
 
+function cityView(w: number): View {
+  const z = w < 720 ? 10 : 11;
+  return { z, cx: xOf(-79.383, z), cy: yOf(43.705, z) };
+}
+
+// Zoom and centre so the street's whole shape fills the view, with padding.
+function fitViewFor(f: MapFeature, w: number, h: number): View {
+  const [minLon, minLat, maxLon, maxLat] = f.bbox;
+  const pad = Math.max(20, Math.min(56, w * 0.07));
+  const w0 = ((maxLon - minLon) / 360) * 256;
+  const h0 = Math.abs(yOf(maxLat, 0) - yOf(minLat, 0));
+  let z = 16;
+  if (w0 > 0.01 || h0 > 0.01) {
+    const zx = w0 > 0.01 ? Math.log2(Math.max(1, w - 2 * pad) / w0) : Infinity;
+    const zy = h0 > 0.01 ? Math.log2(Math.max(1, h - 2 * pad) / h0) : Infinity;
+    z = Math.max(MIN_Z, Math.min(MAX_Z, Math.min(zx, zy)));
+  }
+  return {
+    z,
+    cx: xOf((minLon + maxLon) / 2, z),
+    cy: (yOf(minLat, z) + yOf(maxLat, z)) / 2,
+  };
+}
+
+interface Gesture {
+  mode: "pan" | "pinch";
+  startX: number;
+  startY: number;
+  startDist: number;
+  startMidX: number;
+  startMidY: number;
+  moved: number;
+}
+
+interface Tf {
+  dx: number;
+  dy: number;
+  s: number;
+  ox: number;
+  oy: number;
+}
+
 export default function FreeMap({
   selectedNorm,
   onPick,
+  onReset,
   focusPos,
 }: {
   selectedNorm: string | null;
   onPick: (norm: string) => void;
+  onReset?: () => void;
   focusPos?: { lat: number; lon: number } | null;
 }) {
   const { t } = useLang();
   const boxRef = useRef<HTMLDivElement>(null);
-  const [size, setSize] = useState({ w: 1200, h: 540 });
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const sizeRef = useRef({ w: 0, h: 0 });
   const [features, setFeatures] = useState<MapFeature[] | null>(null);
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
-  const [view, setView] = useState<{ z: number; cx: number; cy: number } | null>(null);
-  const [drag, setDrag] = useState<{ dx: number; dy: number } | null>(null);
-  const pointer = useRef<{ x: number; y: number; moved: number } | null>(null);
+  const [view, setView] = useState<View | null>(null);
+  const viewRef = useRef<View | null>(null);
+  viewRef.current = view;
+  const [tf, setTf] = useState<Tf | null>(null);
+  const tfRef = useRef<Tf | null>(null);
+  tfRef.current = tf;
+  const pointers = useRef(new Map<number, { x: number; y: number }>());
+  const gesture = useRef<Gesture | null>(null);
+  // True once a gesture has had two pointers down: the last finger lifting
+  // at the end of a pinch must not be read as a tap.
+  const multiTouch = useRef(false);
+  const lastFitNorm = useRef<string | null>(null);
 
   // Measure the container.
   useEffect(() => {
     const el = boxRef.current;
     if (!el) return;
-    const update = () => setSize({ w: el.clientWidth, h: el.clientHeight });
+    const update = () => {
+      const s = { w: el.clientWidth, h: el.clientHeight };
+      sizeRef.current = s;
+      setSize(s);
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -139,9 +209,24 @@ export default function FreeMap({
   // Initial view: fit Toronto.
   useEffect(() => {
     if (view || size.w === 0) return;
-    const z = size.w < 720 ? 10 : 11;
-    setView({ z, cx: xOf(-79.383, z), cy: yOf(43.705, z) });
+    setView(cityView(size.w));
   }, [size, view]);
+
+  // Selection drives the map: fit to the selected street's full shape.
+  // Clearing the selection (after one was set) returns to the whole city.
+  useEffect(() => {
+    if (!features) return;
+    if (selectedNorm) {
+      if (lastFitNorm.current === selectedNorm) return;
+      const f = features.find((x) => x.properties.norm === selectedNorm);
+      if (!f || sizeRef.current.w === 0) return;
+      lastFitNorm.current = selectedNorm;
+      setView(fitViewFor(f, sizeRef.current.w, sizeRef.current.h));
+    } else if (lastFitNorm.current !== null) {
+      lastFitNorm.current = null;
+      if (sizeRef.current.w > 0) setView(cityView(sizeRef.current.w));
+    }
+  }, [features, selectedNorm]);
 
   // "Near me": centre on the visitor at street level when a position arrives.
   useEffect(() => {
@@ -196,10 +281,10 @@ export default function FreeMap({
     return [...byColour.entries()].map(([colour, ds]) => ({ colour, d: ds.join(" ") }));
   }, [features, visible, view]);
 
-  const selectedPath = useMemo(() => {
-    if (!features || !visible || !view || !selectedNorm) return "";
+  const selectedInfo = useMemo(() => {
+    if (!features || !visible || !view || !selectedNorm) return null;
     const f = features.find((x) => x.properties.norm === selectedNorm);
-    if (!f) return "";
+    if (!f) return null;
     const parts: string[] = [];
     for (const line of f.geometry.coordinates) {
       line.forEach((pt, i) => {
@@ -208,78 +293,169 @@ export default function FreeMap({
         parts.push(`${i === 0 ? "M" : "L"}${sx.toFixed(1)},${sy.toFixed(1)}`);
       });
     }
-    return parts.join(" ");
+    return { d: parts.join(" "), colour: CLASS_COLOURS[f.properties.cls] ?? "#1a1a1a" };
   }, [features, visible, view, selectedNorm]);
 
+  // Tiles come from the nearest integer zoom and are scaled to the exact
+  // (possibly fractional) view zoom, so pinch zoom stays smooth.
   const tiles = useMemo(() => {
-    if (!view) return [] as { key: string; src: string; left: number; top: number }[];
-    const z = view.z;
+    if (!view) return [] as { key: string; src: string; left: number; top: number; px: number }[];
+    const zt = Math.max(MIN_Z, Math.min(MAX_Z, Math.round(view.z)));
+    const px = 256 * Math.pow(2, view.z - zt);
     const tlx = view.cx - size.w / 2;
     const tly = view.cy - size.h / 2;
-    const i0 = Math.max(0, Math.floor(tlx / 256) - 1);
-    const i1 = Math.min(Math.pow(2, z) - 1, Math.floor((tlx + size.w) / 256) + 1);
-    const j0 = Math.max(0, Math.floor(tly / 256) - 1);
-    const j1 = Math.min(Math.pow(2, z) - 1, Math.floor((tly + size.h) / 256) + 1);
-    const out: { key: string; src: string; left: number; top: number }[] = [];
+    const maxTile = Math.pow(2, zt) - 1;
+    const i0 = Math.max(0, Math.floor(tlx / px) - 1);
+    const i1 = Math.min(maxTile, Math.floor((tlx + size.w) / px) + 1);
+    const j0 = Math.max(0, Math.floor(tly / px) - 1);
+    const j1 = Math.min(maxTile, Math.floor((tly + size.h) / px) + 1);
+    const out: { key: string; src: string; left: number; top: number; px: number }[] = [];
     for (let i = i0; i <= i1; i++)
       for (let j = j0; j <= j1; j++)
         out.push({
-          key: `${z}-${i}-${j}`,
-          src: `${TILE_URL}/${z}/${j}/${i}`,
-          left: i * 256 - tlx,
-          top: j * 256 - tly,
+          key: `${zt}-${i}-${j}`,
+          src: `${TILE_URL}/${zt}/${j}/${i}`,
+          left: i * px - tlx,
+          top: j * px - tly,
+          px,
         });
     return out;
   }, [view, size]);
 
   function zoom(delta: number) {
-    if (!view) return;
-    const z = Math.max(10, Math.min(17, view.z + delta));
-    if (z === view.z) return;
-    const k = Math.pow(2, z - view.z);
-    setView({ z, cx: view.cx * k, cy: view.cy * k });
+    const v = viewRef.current;
+    if (!v) return;
+    const z = Math.max(MIN_Z, Math.min(MAX_Z, Math.round(v.z) + delta));
+    if (z === v.z) return;
+    const k = Math.pow(2, z - v.z);
+    setView({ z, cx: v.cx * k, cy: v.cy * k });
+  }
+
+  // Commit the on-screen gesture transform into the view state, keeping the
+  // world point under the gesture's focal point fixed on screen.
+  function commitTf(tfNow: Tf | null) {
+    const v = viewRef.current;
+    setTf(null);
+    tfRef.current = null;
+    if (!v || !tfNow) return;
+    if (Math.abs(tfNow.dx) < 0.5 && Math.abs(tfNow.dy) < 0.5 && Math.abs(tfNow.s - 1) < 0.01) return;
+    const { w, h } = sizeRef.current;
+    if (w === 0) return;
+    const z2 = Math.max(MIN_Z, Math.min(MAX_Z, v.z + Math.log2(tfNow.s)));
+    const k = Math.pow(2, z2 - v.z);
+    const tlx = v.cx - w / 2;
+    const tly = v.cy - h / 2;
+    // World point (at the old zoom) displayed at the focal point now.
+    const wx = tlx + tfNow.ox - tfNow.dx / tfNow.s;
+    const wy = tly + tfNow.oy - tfNow.dy / tfNow.s;
+    setView({
+      z: z2,
+      cx: wx * k - tfNow.ox + w / 2,
+      cy: wy * k - tfNow.oy + h / 2,
+    });
+  }
+
+  function localPos(e: React.PointerEvent) {
+    const rect = boxRef.current?.getBoundingClientRect();
+    return { x: e.clientX - (rect?.left ?? 0), y: e.clientY - (rect?.top ?? 0) };
+  }
+
+  function startPan(pos: { x: number; y: number }) {
+    gesture.current = {
+      mode: "pan",
+      startX: pos.x,
+      startY: pos.y,
+      startDist: 0,
+      startMidX: pos.x,
+      startMidY: pos.y,
+      moved: 0,
+    };
+    setTf({ dx: 0, dy: 0, s: 1, ox: pos.x, oy: pos.y });
+  }
+
+  function startPinch() {
+    const pts = [...pointers.current.values()];
+    if (pts.length < 2) return;
+    const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+    gesture.current = {
+      mode: "pinch",
+      startX: mid.x,
+      startY: mid.y,
+      startDist: Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y),
+      startMidX: mid.x,
+      startMidY: mid.y,
+      moved: 99,
+    };
+    setTf({ dx: 0, dy: 0, s: 1, ox: mid.x, oy: mid.y });
   }
 
   function onPointerDown(e: React.PointerEvent) {
-    pointer.current = { x: e.clientX, y: e.clientY, moved: 0 };
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    const pos = localPos(e);
+    pointers.current.set(e.pointerId, pos);
+    if (pointers.current.size === 1) {
+      startPan(pos);
+    } else if (pointers.current.size === 2) {
+      multiTouch.current = true;
+      commitTf(tfRef.current);
+      startPinch();
+    }
   }
 
   function onPointerMove(e: React.PointerEvent) {
-    const p = pointer.current;
-    if (!p) return;
-    const dx = e.clientX - p.x;
-    const dy = e.clientY - p.y;
-    p.moved = Math.max(p.moved, Math.hypot(dx, dy));
-    setDrag({ dx, dy });
+    const g = gesture.current;
+    if (!g || !pointers.current.has(e.pointerId)) return;
+    const pos = localPos(e);
+    pointers.current.set(e.pointerId, pos);
+    if (g.mode === "pan" && pointers.current.size === 1) {
+      const dx = pos.x - g.startX;
+      const dy = pos.y - g.startY;
+      g.moved = Math.max(g.moved, Math.hypot(dx, dy));
+      setTf({ dx, dy, s: 1, ox: g.startX, oy: g.startY });
+    } else if (g.mode === "pinch" && pointers.current.size >= 2) {
+      const pts = [...pointers.current.values()];
+      const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+      const mid = { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 };
+      const s = g.startDist > 0 ? Math.max(0.3, Math.min(4, dist / g.startDist)) : 1;
+      setTf({ dx: mid.x - g.startMidX, dy: mid.y - g.startMidY, s, ox: g.startMidX, oy: g.startMidY });
+    }
   }
 
   function onPointerUp(e: React.PointerEvent) {
-    const p = pointer.current;
-    pointer.current = null;
-    if (!p || !view) {
-      setDrag(null);
+    const g = gesture.current;
+    const wasTap =
+      g?.mode === "pan" && g.moved < 6 && pointers.current.size === 1 && !multiTouch.current;
+    pointers.current.delete(e.pointerId);
+    if (pointers.current.size === 0) multiTouch.current = false;
+    if (pointers.current.size === 1 && g?.mode === "pinch") {
+      // One finger lifted mid-pinch: settle the zoom, then keep panning
+      // with the finger that is still down.
+      commitTf(tfRef.current);
+      const rest = [...pointers.current.values()][0];
+      startPan(rest);
       return;
     }
-    const dx = e.clientX - p.x;
-    const dy = e.clientY - p.y;
-    if (p.moved >= 5) {
-      setView((v) => (v ? { ...v, cx: v.cx - dx, cy: v.cy - dy } : v));
-      setDrag(null);
+    if (pointers.current.size > 0) return;
+    gesture.current = null;
+    if (wasTap) {
+      setTf(null);
+      tfRef.current = null;
+      hitTest(e);
       return;
     }
-    setDrag(null);
-    // Click: hit-test nearest street within ~14 px.
-    if (!features) return;
-    const rect = boxRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    const sx = e.clientX - rect.left;
-    const sy = e.clientY - rect.top;
-    const wx = view.cx - size.w / 2 + sx;
-    const wy = view.cy - size.h / 2 + sy;
-    const lon = lonOf(wx, view.z);
-    const lat = latOf(wy, view.z);
-    const tolDeg = (14 / worldSize(view.z)) * 360;
+    commitTf(tfRef.current);
+  }
+
+  function hitTest(e: React.PointerEvent) {
+    const v = viewRef.current;
+    if (!v || !features) return;
+    const { x: sx, y: sy } = localPos(e);
+    const wx = v.cx - size.w / 2 + sx;
+    const wy = v.cy - size.h / 2 + sy;
+    const lon = lonOf(wx, v.z);
+    const lat = latOf(wy, v.z);
+    const tolPx = e.pointerType === "touch" ? 22 : 14;
+    const tolDeg = (tolPx / worldSize(v.z)) * 360;
     let best: { norm: string; d: number } | null = null;
     for (const f of features) {
       const [a, b, c, d] = f.bbox;
@@ -288,33 +464,48 @@ export default function FreeMap({
         for (let i = 0; i + 1 < line.length; i++) {
           const dist = distToSegment(
             wx, wy,
-            xOf(line[i][0], view.z), yOf(line[i][1], view.z),
-            xOf(line[i + 1][0], view.z), yOf(line[i + 1][1], view.z)
+            xOf(line[i][0], v.z), yOf(line[i][1], v.z),
+            xOf(line[i + 1][0], v.z), yOf(line[i + 1][1], v.z)
           );
-          if (dist <= 14 && (!best || dist < best.d)) best = { norm: f.properties.norm, d: dist };
+          if (dist <= tolPx && (!best || dist < best.d)) best = { norm: f.properties.norm, d: dist };
         }
       }
     }
     if (best) onPick(best.norm);
   }
 
+  const stop = {
+    onPointerDown: (e: React.PointerEvent) => e.stopPropagation(),
+    onPointerMove: (e: React.PointerEvent) => e.stopPropagation(),
+    onPointerUp: (e: React.PointerEvent) => e.stopPropagation(),
+  };
+
   return (
-    <div id="map" className="mb-16 scroll-mt-24">
-      <h2 className="display max-w-[820px] text-[40px] md:text-[52px]">{t.map.title}</h2>
-      <p className="mt-4 max-w-[760px] text-[17px] leading-relaxed text-ink/70">{t.map.hint}</p>
+    <div id="map" className="scroll-mt-24">
+      <h2 className="display max-w-[820px] text-[30px] md:text-[38px]">{t.map.title}</h2>
+      <p className="mt-3 max-w-[760px] text-[16px] leading-relaxed text-ink/70">{t.map.hint}</p>
 
       <div
         ref={boxRef}
-        className="relative mt-5 h-[440px] touch-none select-none overflow-hidden rounded-[24px] border border-line bg-[#e8e4da] md:h-[560px]"
+        data-testid="street-map"
+        className="relative mt-4 h-[62vh] min-h-[380px] scroll-mt-3 touch-none select-none overflow-hidden rounded-[24px] border border-line bg-[#e8e4da] md:h-[560px] lg:h-[660px]"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         role="application"
         aria-label={t.map.title}
       >
         <div
           className="absolute inset-0"
-          style={drag ? { transform: `translate(${drag.dx}px, ${drag.dy}px)` } : undefined}
+          style={
+            tf
+              ? {
+                  transform: `translate(${tf.dx}px, ${tf.dy}px) scale(${tf.s})`,
+                  transformOrigin: `${tf.ox}px ${tf.oy}px`,
+                }
+              : undefined
+          }
         >
           {tiles.map((tile) => (
             // eslint-disable-next-line @next/next/no-img-element
@@ -323,8 +514,8 @@ export default function FreeMap({
               src={tile.src}
               alt=""
               draggable={false}
-              className="pointer-events-none absolute h-[256px] w-[256px]"
-              style={{ left: tile.left, top: tile.top }}
+              className="pointer-events-none absolute"
+              style={{ left: tile.left, top: tile.top, width: tile.px, height: tile.px }}
             />
           ))}
           <svg className="absolute inset-0 h-full w-full" aria-hidden="true">
@@ -339,10 +530,19 @@ export default function FreeMap({
                 strokeLinejoin="round"
               />
             ))}
-            {selectedPath && (
+            {selectedInfo && (
               <>
-                <path d={selectedPath} fill="none" stroke="#ffffff" strokeWidth={6} strokeLinecap="round" strokeLinejoin="round" />
-                <path d={selectedPath} fill="none" stroke="#1a1a1a" strokeWidth={3.2} strokeLinecap="round" strokeLinejoin="round" />
+                <path d={selectedInfo.d} fill="none" stroke="#ffffff" strokeWidth={9} strokeLinecap="round" strokeLinejoin="round" />
+                <path d={selectedInfo.d} fill="none" stroke="#141414" strokeWidth={5.5} strokeLinecap="round" strokeLinejoin="round" />
+                <path
+                  data-testid="selected-path"
+                  d={selectedInfo.d}
+                  fill="none"
+                  stroke={selectedInfo.colour}
+                  strokeWidth={3.2}
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
               </>
             )}
             {marker && (
@@ -354,22 +554,29 @@ export default function FreeMap({
           </svg>
         </div>
 
-        <div
-          className="absolute right-3 top-3 flex flex-col gap-2"
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerMove={(e) => e.stopPropagation()}
-          onPointerUp={(e) => e.stopPropagation()}
-        >
+        {selectedNorm && onReset && (
+          <div className="absolute left-3 top-3" {...stop}>
+            <button
+              onClick={onReset}
+              data-testid="show-city-button"
+              className="flex h-11 items-center rounded-full border border-line bg-paper px-4 text-[14.5px] font-semibold shadow-sm hover:border-ink"
+            >
+              {t.map.showCity}
+            </button>
+          </div>
+        )}
+
+        <div className="absolute right-3 top-3 flex flex-col gap-2" {...stop}>
           <button
             onClick={() => zoom(1)}
-            className="h-10 w-10 rounded-full border border-line bg-paper text-[20px] font-semibold leading-none shadow-sm hover:border-ink"
+            className="h-11 w-11 rounded-full border border-line bg-paper text-[22px] font-semibold leading-none shadow-sm hover:border-ink"
             aria-label="Zoom in"
           >
             +
           </button>
           <button
             onClick={() => zoom(-1)}
-            className="h-10 w-10 rounded-full border border-line bg-paper text-[20px] font-semibold leading-none shadow-sm hover:border-ink"
+            className="h-11 w-11 rounded-full border border-line bg-paper text-[22px] font-semibold leading-none shadow-sm hover:border-ink"
             aria-label="Zoom out"
           >
             −
@@ -378,9 +585,7 @@ export default function FreeMap({
 
         <div
           className="absolute bottom-3 left-3 max-w-[300px] rounded-[14px] border border-line bg-paper/95 px-4 py-3"
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerMove={(e) => e.stopPropagation()}
-          onPointerUp={(e) => e.stopPropagation()}
+          {...stop}
         >
           <p className="text-[12.5px] font-semibold uppercase tracking-wide text-ink/55">{t.map.legendTitle}</p>
           <ul className="mt-2 space-y-1.5">
@@ -389,19 +594,16 @@ export default function FreeMap({
                 <span className="mt-[3px] inline-block h-[6px] w-6 shrink-0 rounded-full" style={{ background: CLASS_COLOURS[k] }} />
                 <span>
                   {t.classNames[k]}
-                  {counts ? <span className="text-ink/55"> · {fmt(counts[k] ?? 0)} {t.streetsWord}</span> : null}
+                  {counts ? (
+                    <span className="text-ink/55 max-sm:hidden"> · {fmt(counts[k] ?? 0)} {t.streetsWord}</span>
+                  ) : null}
                 </span>
               </li>
             ))}
           </ul>
         </div>
 
-        <p
-          className="absolute bottom-3 right-3 rounded-full bg-paper/85 px-3 py-1 text-[11.5px] text-ink/60"
-          onPointerDown={(e) => e.stopPropagation()}
-          onPointerMove={(e) => e.stopPropagation()}
-          onPointerUp={(e) => e.stopPropagation()}
-        >
+        <p className="absolute bottom-3 right-3 rounded-full bg-paper/85 px-3 py-1 text-[11.5px] text-ink/60" {...stop}>
           Basemap:{" "}
           <a href="https://www.esri.com" className="underline" target="_blank" rel="noreferrer">
             Esri

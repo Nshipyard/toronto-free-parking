@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLang, CLASS_KEYS } from "@/i18n";
 import type { ClassKey } from "@/i18n";
 import FreeMap, { CLASS_COLOURS } from "./FreeMap";
@@ -84,6 +84,7 @@ export default function StreetFinder() {
   const [focusPos, setFocusPos] = useState<{ lat: number; lon: number } | null>(null);
   const [nearShapes, setNearShapes] = useState<StreetShape[] | null>(null);
   const [nearInfo, setNearInfo] = useState<Record<string, NearInfo> | null>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetch("/data/streets.json")
@@ -160,7 +161,35 @@ export default function StreetFinder() {
     );
   }
 
-  function selectStreet(norm: string) {
+  // A selection made from the search box or the Near me list scrolls the
+  // map itself into view: the street, zoomed in, fills the screen and its
+  // answer sits in the panel right beside or below the map. The scroll is
+  // issued twice: the suggestion button unmounts on selection, and losing
+  // the focused element can cancel a smooth scrollIntoView mid-flight, so
+  // the destination is re-asserted once the selection render settles.
+  function scrollToStage() {
+    const targetY = () => {
+      // Desktop: the panel sits beside the map, so align the whole stage
+      // (both columns share the same top). Smaller screens: align the map
+      // box itself, with the panel attached right below it.
+      const el =
+        window.innerWidth >= 1024
+          ? stageRef.current
+          : stageRef.current?.querySelector('[data-testid="street-map"]') ?? stageRef.current;
+      if (!el) return null;
+      return Math.max(0, el.getBoundingClientRect().top + window.scrollY - 12);
+    };
+    requestAnimationFrame(() => {
+      const y = targetY();
+      if (y !== null) window.scrollTo({ top: y, behavior: "smooth" });
+    });
+    window.setTimeout(() => {
+      const y = targetY();
+      if (y !== null) window.scrollTo({ top: y, behavior: "auto" });
+    }, 700);
+  }
+
+  function selectStreet(norm: string, opts?: { scroll?: boolean }) {
     setSelected(norm);
     setShowAll(false);
     setDetail(null);
@@ -168,6 +197,7 @@ export default function StreetFinder() {
     const row = rows?.find((r) => r[1] === norm);
     if (row) setQuery(row[0]);
     setSuggestOpen(false);
+    if (opts?.scroll) scrollToStage();
     fetch(`/api/v1/parking/streets/${encodeURIComponent(norm)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -177,70 +207,29 @@ export default function StreetFinder() {
       .catch(() => setLoadingDetail(false));
   }
 
+  function resetSelection() {
+    setSelected(null);
+    setDetail(null);
+    setLoadingDetail(false);
+    setShowAll(false);
+    setQuery("");
+    setSuggestOpen(false);
+  }
+
   const selRow = rows?.find((r) => r[1] === selected) ?? null;
   const selCls: ClassKey = detail?.class ?? selRow?.[4] ?? "norule";
+  const showProfile = selected !== null;
+  const showNearList = !showProfile && nearState === "done" && near !== null;
 
   return (
-    <>
-      <FreeMap selectedNorm={selected} onPick={selectStreet} focusPos={focusPos} />
+    <div id="explorer" className="scroll-mt-24">
+      <p className="text-[13px] font-semibold uppercase tracking-[0.12em] text-ink/60">{t.search.kicker}</p>
+      <h2 className="display mt-4 text-[40px] md:text-[52px]">{t.search.title}</h2>
+      <p className="mt-5 max-w-[760px] text-[18px] leading-relaxed text-ink/70">{t.search.body}</p>
 
-      <div id="explorer" className="scroll-mt-24">
-        <p className="text-[13px] font-semibold uppercase tracking-[0.12em] text-ink/60">{t.search.kicker}</p>
-        <h2 className="display mt-4 text-[40px] md:text-[52px]">{t.search.title}</h2>
-        <p className="mt-5 max-w-[760px] text-[18px] leading-relaxed text-ink/70">{t.search.body}</p>
-
-        <div className="mt-6 flex flex-wrap items-center gap-4">
-          <button
-            data-testid="nearme-button"
-            onClick={onNearMe}
-            className="rounded-full bg-canada px-6 py-3 text-[16px] font-semibold text-white hover:bg-canada/90"
-          >
-            {t.nearme.button}
-          </button>
-          <p className="text-[15px] text-ink/60">{t.nearme.note}</p>
-        </div>
-        {nearState === "locating" && (
-          <p data-testid="nearme-message" className="mt-4 text-[15px] text-ink/70">{t.nearme.locating}</p>
-        )}
-        {nearState === "error" && nearMsg && (
-          <p data-testid="nearme-message" className="mt-4 max-w-[680px] rounded-[16px] border border-line bg-cream px-5 py-4 text-[15px] leading-relaxed text-ink/80">{nearMsg}</p>
-        )}
-        {nearState === "done" && near !== null && (
-          <div data-testid="nearme-list" className="mt-5 max-w-[760px]">
-            <h3 className="text-[19px] font-semibold">{t.nearme.title}</h3>
-            {near.length === 0 && <p className="mt-2 text-[15.5px] text-ink/70">{t.nearme.none}</p>}
-            <ul className="mt-3 divide-y divide-line overflow-hidden rounded-[16px] border border-line bg-white">
-              {near.map((s) => {
-                const info = nearInfo?.[s.norm] ?? null;
-                const cls: ClassKey = info?.[0] ?? "norule";
-                const ns = info?.[1] ?? 0;
-                const np = info?.[2] ?? 0;
-                const tl = info?.[3] ?? 0;
-                const gp = info?.[4] ?? null;
-                return (
-                  <li key={s.norm}>
-                    <button onClick={() => selectStreet(s.norm)} className="block w-full px-5 py-3.5 text-left hover:bg-cream">
-                      <span className="flex flex-wrap items-baseline justify-between gap-2">
-                        <span className="text-[16px] font-semibold">{s.street}</span>
-                        <span className="text-[13.5px] text-ink/55">{fmt(Math.round(s.distanceM))} {t.nearme.away}</span>
-                      </span>
-                      <span className="mt-2 block">
-                        <ClassChip cls={cls} small />
-                      </span>
-                      <span className="mt-2 block text-[14px] leading-relaxed text-ink/70">
-                        {t.nearme.noStopping}: {ns} · {t.nearme.noParking}: {np} · {t.nearme.timeLimited}: {tl}
-                        {gp !== null && <> · {t.search.nearestGp}: {fmt(gp)} m</>}
-                      </span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-            <p className="mt-3 text-[13.5px] text-ink/55">{t.nearme.limit}</p>
-          </div>
-        )}
-
-        <div className="relative mt-8 max-w-[640px]">
+      {/* Toolbar: search and Near me first, big enough to tap on the go. */}
+      <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-start">
+        <div className="relative flex-1">
           <input
             value={query}
             onChange={(e) => {
@@ -248,16 +237,16 @@ export default function StreetFinder() {
               setSuggestOpen(true);
             }}
             placeholder={t.search.placeholder}
-            className="w-full rounded-full border border-line bg-white px-6 py-4 text-[17px] outline-none focus:border-ink"
+            className="h-[52px] w-full rounded-full border border-line bg-white px-6 text-[17px] outline-none focus:border-ink"
             aria-label={t.search.title}
           />
           {suggestOpen && suggestions.length > 0 && (
-            <ul className="absolute left-0 right-0 top-full z-10 mt-2 overflow-hidden rounded-[16px] border border-line bg-white shadow-lg">
+            <ul className="absolute left-0 right-0 top-full z-30 mt-2 overflow-hidden rounded-[16px] border border-line bg-white shadow-lg">
               {suggestions.map((r) => (
                 <li key={r[1]}>
                   <button
-                    onClick={() => selectStreet(r[1])}
-                    className="flex w-full items-center justify-between gap-3 px-5 py-3 text-left hover:bg-cream"
+                    onClick={() => selectStreet(r[1], { scroll: true })}
+                    className="flex min-h-[48px] w-full items-center justify-between gap-3 px-5 py-3 text-left hover:bg-cream"
                   >
                     <span className="flex items-center gap-3 text-[16px] font-medium">
                       <span className="inline-block h-[7px] w-6 shrink-0 rounded-full" style={{ background: CLASS_COLOURS[r[4]] }} />
@@ -275,133 +264,214 @@ export default function StreetFinder() {
             <p className="mt-3 text-[15px] text-ink/60">{t.search.noMatch}</p>
           )}
         </div>
+        <button
+          data-testid="nearme-button"
+          onClick={onNearMe}
+          className="h-[52px] shrink-0 rounded-full bg-canada px-7 text-[16px] font-semibold text-white hover:bg-canada/90"
+        >
+          {t.nearme.button}
+        </button>
+      </div>
+      <p className="mt-2.5 text-[14.5px] text-ink/60">{t.nearme.note}</p>
+      {nearState === "locating" && (
+        <p data-testid="nearme-message" className="mt-3 text-[15px] text-ink/70">{t.nearme.locating}</p>
+      )}
+      {nearState === "error" && nearMsg && (
+        <p data-testid="nearme-message" className="mt-3 max-w-[680px] rounded-[16px] border border-line bg-cream px-5 py-4 text-[15px] leading-relaxed text-ink/80">{nearMsg}</p>
+      )}
 
-        {loadingDetail && <p className="mt-8 text-ink/60">{t.search.loadingSegs}</p>}
+      {/* Stage: the map, with the street's answer in a panel beside it on
+          desktop and attached right below it on phones and tablets. */}
+      <div ref={stageRef} className="mt-6 grid scroll-mt-6 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
+        <FreeMap selectedNorm={selected} onPick={(norm) => selectStreet(norm)} onReset={resetSelection} focusPos={focusPos} />
 
-        {detail && (
-          <div className="mt-10">
-            <h3 className="display text-[34px]">{detail.street}</h3>
+        <div className="rounded-[24px] border border-line bg-white lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:overflow-y-auto">
+          {showProfile ? (
+            <div className="p-5 md:p-6">
+              {nearState === "done" && near !== null && (
+                <button
+                  onClick={resetSelection}
+                  className="mb-4 flex min-h-[44px] items-center rounded-full border border-line px-4 text-[14.5px] font-medium hover:border-ink"
+                >
+                  ← {t.nearme.title}
+                </button>
+              )}
+              {loadingDetail && !detail && <p className="text-ink/60">{t.search.loadingSegs}</p>}
+              {detail && (
+                <>
+                  <h3 className="display text-[30px]">{detail.street}</h3>
 
-            <div className="mt-4 flex max-w-[760px] flex-col gap-2 rounded-[20px] border border-line bg-white px-6 py-5">
-              <ClassChip cls={selCls} />
-              <p className="text-[16px] leading-relaxed text-ink/75">{t.classBlurbs[selCls]}</p>
+                  <div className="mt-4 flex flex-col items-start gap-2 rounded-[20px] border border-line bg-white px-5 py-4">
+                    <ClassChip cls={selCls} />
+                    <p className="text-[15.5px] leading-relaxed text-ink/75">{t.classBlurbs[selCls]}</p>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3">
+                    <div className="rounded-[20px] border border-line bg-cream p-4">
+                      <p className="display text-[26px]">{detail.rollup ? `${detail.rollup.length_km} km` : "…"}</p>
+                      <p className="mt-1 text-[13.5px] text-ink/60">{t.search.statLength}</p>
+                    </div>
+                    <div className="rounded-[20px] border border-line bg-cream p-4">
+                      <p className="display text-[26px]">{detail.rollup ? fmt(detail.rollup.rules_total) : "…"}</p>
+                      <p className="mt-1 text-[13.5px] text-ink/60">{t.search.statRules}</p>
+                    </div>
+                    <div className="rounded-[20px] border border-line bg-cream p-4">
+                      <p className="display text-[26px]">{detail.rollup ? fmt(detail.rollup.tickets_2023_2025) : "…"}</p>
+                      <p className="mt-1 text-[13.5px] text-ink/60">{t.search.statTickets}</p>
+                    </div>
+                    <div className="rounded-[20px] border border-line bg-cream p-4">
+                      <p className="display text-[26px]">{fmt(detail.count)}</p>
+                      <p className="mt-1 text-[13.5px] text-ink/60">{t.search.segmentsWord}</p>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <h4 className="text-[16px] font-semibold">{t.search.breakdownTitle}</h4>
+                    <ul className="mt-3 space-y-2">
+                      {CLASS_KEYS.map((k) => {
+                        const n = k === selCls ? detail.count : 0;
+                        return (
+                          <li key={k} className="flex items-center gap-3 text-[14.5px]">
+                            <span className="inline-block h-[8px] w-8 shrink-0 rounded-full" style={{ background: CLASS_COLOURS[k] }} />
+                            <span className="font-medium">{t.classNames[k]}</span>
+                            <span className="text-ink/60">{fmt(n)} {t.sectionsWordShort}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    <p className="mt-3 text-[14px] leading-relaxed text-ink/60">{t.search.breakdownNote}</p>
+                  </div>
+
+                  <div className="mt-6">
+                    <h4 className="text-[16px] font-semibold">
+                      {detail.rollup ? fmt(detail.rollup.rules_total) : 0}{" "}
+                      {detail.rollup && detail.rollup.rules_total === 1 ? t.search.rulesWordOne : t.search.rulesWord}
+                    </h4>
+                    <p className="mt-1 text-[14px] text-ink/60">{t.search.rulesNote}</p>
+                    {Object.keys(detail.rule_categories).length === 0 ? (
+                      <p className="mt-3 text-[15px] text-ink/70">{t.classBlurbs.norule}</p>
+                    ) : (
+                      <ul className="mt-3 flex flex-wrap gap-2">
+                        {Object.entries(detail.rule_categories)
+                          .sort((a, b) => b[1] - a[1])
+                          .map(([cat, n]) => (
+                            <li key={cat} className="rounded-full border border-line bg-cream px-3.5 py-1.5 text-[13.5px]">
+                              {(t.search.ruleCats as Record<string, string>)[cat] ?? cat}: <strong>{fmt(n)}</strong>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                    {detail.rollup && detail.rollup.permit_share > 0 && (
+                      <p className="mt-4 rounded-[14px] border border-line bg-cream px-4 py-3 text-[14px] leading-relaxed text-ink/75">
+                        {t.search.permitYes}
+                      </p>
+                    )}
+                  </div>
+
+                  <h4 className="mt-8 text-[16px] font-semibold">
+                    {t.search.segmentsWord} · {fmt(detail.count)}
+                  </h4>
+                  <p className="mt-1 text-[14px] text-ink/60">
+                    {detail.count === 1
+                      ? t.search.sectionsNoteOne
+                      : t.search.sectionsNote.replace("{n}", fmt(detail.count))}
+                  </p>
+                  <ul className="mt-4 divide-y divide-line overflow-hidden rounded-[16px] border border-line">
+                    {(showAll ? detail.segments : detail.segments.slice(0, 40)).map((s) => (
+                      <li key={s.segment_id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-4 py-3 text-[14px]">
+                        <span className="font-medium">{s.road_class}</span>
+                        <span className="text-ink/60">{s.length_m ? `${Math.round(s.length_m)} m` : ""}</span>
+                        <span className="text-ink/60">{s.oneway ? t.search.oneway : t.search.twoway}</span>
+                        {(s.addr_lo_l || s.addr_lo_r) && (
+                          <span className="text-ink/60">
+                            {t.search.addrRange}: {[s.addr_lo_l, s.addr_hi_l].filter(Boolean).join("–")}
+                            {s.addr_lo_r ? ` / ${[s.addr_lo_r, s.addr_hi_r].filter(Boolean).join("–")}` : ""}
+                          </span>
+                        )}
+                        {s.bike_infra_type && <span className="text-ink/60">{s.bike_infra_type}</span>}
+                        {s.permit_area && <span className="text-ink/60">{t.search.permitWord} {s.permit_area}</span>}
+                        {s.nearest_green_p_m !== null && (
+                          <span className="text-ink/60">{t.search.nearestGp}: {fmt(s.nearest_green_p_m)} m</span>
+                        )}
+                        {(s.green_p_250m > 0 || s.bike_share_250m > 0 || s.cafeto_curb_lane_250m > 0 || s.accessible_stalls_250m > 0 || s.ev_chargers_250m > 0) && (
+                          <span className="text-ink/60">
+                            {t.search.nearWord}:{" "}
+                            {[
+                              s.green_p_250m > 0 ? `${s.green_p_250m} ${t.search.gpWord}` : null,
+                              s.bike_share_250m > 0 ? `${s.bike_share_250m} ${t.search.bsWord}` : null,
+                              s.cafeto_curb_lane_250m > 0 ? `${s.cafeto_curb_lane_250m} ${t.search.cafetoWord}` : null,
+                              s.accessible_stalls_250m > 0 ? `${s.accessible_stalls_250m} ${t.search.accWord}` : null,
+                              s.ev_chargers_250m > 0 ? `${s.ev_chargers_250m} ${t.search.evWord}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </span>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {!showAll && detail.count > 40 && (
+                    <button
+                      onClick={() => setShowAll(true)}
+                      className="mt-4 min-h-[44px] rounded-full border border-line px-5 py-2.5 text-[15px] font-medium hover:border-ink"
+                    >
+                      {t.search.showAll} ({t.search.showingFirst} 40 {t.search.ofWord} {fmt(detail.count)})
+                    </button>
+                  )}
+                </>
+              )}
             </div>
-
-            <div className="mt-5 grid max-w-[1000px] grid-cols-2 gap-4 md:grid-cols-4">
-              <div className="rounded-[20px] border border-line bg-cream p-5">
-                <p className="display text-[30px]">{detail.rollup ? `${detail.rollup.length_km} km` : "…"}</p>
-                <p className="mt-1 text-[14px] text-ink/60">{t.search.statLength}</p>
-              </div>
-              <div className="rounded-[20px] border border-line bg-cream p-5">
-                <p className="display text-[30px]">{detail.rollup ? fmt(detail.rollup.rules_total) : "…"}</p>
-                <p className="mt-1 text-[14px] text-ink/60">{t.search.statRules}</p>
-              </div>
-              <div className="rounded-[20px] border border-line bg-cream p-5">
-                <p className="display text-[30px]">{detail.rollup ? fmt(detail.rollup.tickets_2023_2025) : "…"}</p>
-                <p className="mt-1 text-[14px] text-ink/60">{t.search.statTickets}</p>
-              </div>
-              <div className="rounded-[20px] border border-line bg-cream p-5">
-                <p className="display text-[30px]">{fmt(detail.count)}</p>
-                <p className="mt-1 text-[14px] text-ink/60">{t.search.segmentsWord}</p>
-              </div>
-            </div>
-
-            <div className="mt-8 max-w-[760px]">
-              <h4 className="text-[17px] font-semibold">{t.search.breakdownTitle}</h4>
-              <ul className="mt-3 space-y-2">
-                {CLASS_KEYS.map((k) => {
-                  const n = k === selCls ? detail.count : 0;
+          ) : showNearList ? (
+            <div className="p-5 md:p-6" data-testid="nearme-list">
+              <h3 className="text-[19px] font-semibold">{t.nearme.title}</h3>
+              {near.length === 0 && <p className="mt-2 text-[15.5px] text-ink/70">{t.nearme.none}</p>}
+              <ul className="mt-3 divide-y divide-line">
+                {near.map((s) => {
+                  const info = nearInfo?.[s.norm] ?? null;
+                  const cls: ClassKey = info?.[0] ?? "norule";
+                  const ns = info?.[1] ?? 0;
+                  const np = info?.[2] ?? 0;
+                  const tl = info?.[3] ?? 0;
+                  const gp = info?.[4] ?? null;
                   return (
-                    <li key={k} className="flex items-center gap-3 text-[15px]">
-                      <span className="inline-block h-[8px] w-8 shrink-0 rounded-full" style={{ background: CLASS_COLOURS[k] }} />
-                      <span className="font-medium">{t.classNames[k]}</span>
-                      <span className="text-ink/60">{fmt(n)} {t.sectionsWordShort}</span>
+                    <li key={s.norm}>
+                      <button onClick={() => selectStreet(s.norm, { scroll: true })} className="block min-h-[52px] w-full py-3.5 text-left hover:bg-cream">
+                        <span className="flex flex-wrap items-baseline justify-between gap-2">
+                          <span className="text-[16px] font-semibold">{s.street}</span>
+                          <span className="text-[13.5px] text-ink/55">{fmt(Math.round(s.distanceM))} {t.nearme.away}</span>
+                        </span>
+                        <span className="mt-2 block">
+                          <ClassChip cls={cls} small />
+                        </span>
+                        <span className="mt-2 block text-[14px] leading-relaxed text-ink/70">
+                          {t.nearme.noStopping}: {ns} · {t.nearme.noParking}: {np} · {t.nearme.timeLimited}: {tl}
+                          {gp !== null && <> · {t.search.nearestGp}: {fmt(gp)} m</>}
+                        </span>
+                      </button>
                     </li>
                   );
                 })}
               </ul>
-              <p className="mt-3 text-[14.5px] leading-relaxed text-ink/60">{t.search.breakdownNote}</p>
+              <p className="mt-3 text-[13.5px] text-ink/55">{t.nearme.limit}</p>
             </div>
-
-            <div className="mt-8 max-w-[760px]">
-              <h4 className="text-[17px] font-semibold">
-                {detail.rollup ? fmt(detail.rollup.rules_total) : 0}{" "}
-                {detail.rollup && detail.rollup.rules_total === 1 ? t.search.rulesWordOne : t.search.rulesWord}
-              </h4>
-              <p className="mt-1 text-[14.5px] text-ink/60">{t.search.rulesNote}</p>
-              {Object.keys(detail.rule_categories).length === 0 ? (
-                <p className="mt-3 text-[15.5px] text-ink/70">{t.classBlurbs.norule}</p>
-              ) : (
-                <ul className="mt-3 flex flex-wrap gap-2">
-                  {Object.entries(detail.rule_categories)
-                    .sort((a, b) => b[1] - a[1])
-                    .map(([cat, n]) => (
-                      <li key={cat} className="rounded-full border border-line bg-cream px-3.5 py-1.5 text-[14px]">
-                        {(t.search.ruleCats as Record<string, string>)[cat] ?? cat}: <strong>{fmt(n)}</strong>
-                      </li>
-                    ))}
-                </ul>
-              )}
-              {detail.rollup && detail.rollup.permit_share > 0 && (
-                <p className="mt-4 rounded-[14px] border border-line bg-cream px-4 py-3 text-[14.5px] leading-relaxed text-ink/75">
-                  {t.search.permitYes}
-                </p>
-              )}
+          ) : (
+            <div className="p-5 md:p-6">
+              <h3 className="text-[19px] font-semibold">{t.map.legendTitle}</h3>
+              <ul className="mt-4 space-y-4">
+                {CLASS_KEYS.map((k) => (
+                  <li key={k}>
+                    <span className="flex items-center gap-2.5 text-[15px] font-medium">
+                      <span className="inline-block h-[7px] w-7 shrink-0 rounded-full" style={{ background: CLASS_COLOURS[k] }} />
+                      {t.classNames[k]}
+                    </span>
+                    <p className="mt-1.5 text-[14.5px] leading-relaxed text-ink/70">{t.classBlurbs[k]}</p>
+                  </li>
+                ))}
+              </ul>
             </div>
-
-            <h4 className="mt-10 text-[17px] font-semibold">
-              {t.search.segmentsWord} · {fmt(detail.count)}
-            </h4>
-            <p className="mt-1 text-[14.5px] text-ink/60">
-              {detail.count === 1
-                ? t.search.sectionsNoteOne
-                : t.search.sectionsNote.replace("{n}", fmt(detail.count))}
-            </p>
-            <ul className="mt-4 divide-y divide-line overflow-hidden rounded-[16px] border border-line bg-white">
-              {(showAll ? detail.segments : detail.segments.slice(0, 40)).map((s) => (
-                <li key={s.segment_id} className="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3 text-[14.5px]">
-                  <span className="font-medium">{s.road_class}</span>
-                  <span className="text-ink/60">{s.length_m ? `${Math.round(s.length_m)} m` : ""}</span>
-                  <span className="text-ink/60">{s.oneway ? t.search.oneway : t.search.twoway}</span>
-                  {(s.addr_lo_l || s.addr_lo_r) && (
-                    <span className="text-ink/60">
-                      {t.search.addrRange}: {[s.addr_lo_l, s.addr_hi_l].filter(Boolean).join("–")}
-                      {s.addr_lo_r ? ` / ${[s.addr_lo_r, s.addr_hi_r].filter(Boolean).join("–")}` : ""}
-                    </span>
-                  )}
-                  {s.bike_infra_type && <span className="text-ink/60">{s.bike_infra_type}</span>}
-                  {s.permit_area && <span className="text-ink/60">{t.search.permitWord} {s.permit_area}</span>}
-                  {s.nearest_green_p_m !== null && (
-                    <span className="text-ink/60">{t.search.nearestGp}: {fmt(s.nearest_green_p_m)} m</span>
-                  )}
-                  {(s.green_p_250m > 0 || s.bike_share_250m > 0 || s.cafeto_curb_lane_250m > 0 || s.accessible_stalls_250m > 0 || s.ev_chargers_250m > 0) && (
-                    <span className="text-ink/60">
-                      {t.search.nearWord}:{" "}
-                      {[
-                        s.green_p_250m > 0 ? `${s.green_p_250m} ${t.search.gpWord}` : null,
-                        s.bike_share_250m > 0 ? `${s.bike_share_250m} ${t.search.bsWord}` : null,
-                        s.cafeto_curb_lane_250m > 0 ? `${s.cafeto_curb_lane_250m} ${t.search.cafetoWord}` : null,
-                        s.accessible_stalls_250m > 0 ? `${s.accessible_stalls_250m} ${t.search.accWord}` : null,
-                        s.ev_chargers_250m > 0 ? `${s.ev_chargers_250m} ${t.search.evWord}` : null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
-                  )}
-                </li>
-              ))}
-            </ul>
-            {!showAll && detail.count > 40 && (
-              <button
-                onClick={() => setShowAll(true)}
-                className="mt-4 rounded-full border border-line px-5 py-2.5 text-[15px] font-medium hover:border-ink"
-              >
-                {t.search.showAll} ({t.search.showingFirst} 40 {t.search.ofWord} {fmt(detail.count)})
-              </button>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </div>
-    </>
+    </div>
   );
 }

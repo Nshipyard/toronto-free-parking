@@ -46,6 +46,7 @@ const en = {
     hint: "Click a street on the map to see what its rules say. Drag to move, use the buttons to zoom.",
     legendTitle: "What the colours mean",
     loading: "Loading the map…",
+    showCity: "Show whole city",
   },
   nearme: {
     button: "Near me",
@@ -239,6 +240,7 @@ const fr: Dict = {
     hint: "Cliquez sur une rue de la carte pour voir ce que ses règles disent. Faites glisser pour déplacer, utilisez les boutons pour zoomer.",
     legendTitle: "Ce que les couleurs veulent dire",
     loading: "Chargement de la carte…",
+    showCity: "Voir toute la ville",
   },
   nearme: {
     button: "Près de moi",

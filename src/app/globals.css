@@ -1,0 +1,46 @@
+@import "tailwindcss";
+
+@theme {
+  --font-display: "Newsreader", "Source Serif 4", Georgia, serif;
+  --font-sans: "Inter", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
+
+  --color-paper: #ffffff;
+  --color-paper-warm: #fbfbfb;
+  --color-muted: #f7f7f7;
+  --color-ink: #0a0f1e;
+  --color-canada: #d80621;
+  --color-canada-dark: #a80419;
+  --color-line: rgba(10, 15, 30, 0.1);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+  letter-spacing: -0.01em;
+  -webkit-font-smoothing: antialiased;
+}
+
+.display {
+  font-family: var(--font-display);
+  font-weight: 400;
+  letter-spacing: -0.05em;
+  line-height: 1.05;
+}
+
+::selection {
+  background: var(--color-canada);
+  color: #fff;
+}
+
+/* Sticky-nav anchor offset: in-page anchors never hide under the fixed header. */
+section[id] {
+  scroll-margin-top: 88px;
+}

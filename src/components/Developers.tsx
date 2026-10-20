@@ -13,9 +13,9 @@ const endpoints = [
   "segments": 50027,
   "total_length_km": 6461.6,
   "classes": {
-    "free":      { "streets": 394, "segments": 1412, "length_km": 157.8 },
+    "free":      { "streets": 1442, "segments": 15427, "length_km": 1680.6 },
     "norule":    { "streets": 7423, "segments": 15325, "length_km": 2145.4 },
-    "noparking": { "streets": 4674, "segments": 31541, "length_km": 3880.9 },
+    "nofree":    { "streets": 3626, "segments": 17526, "length_km": 2358.0 },
     "winter":    { "streets": 853, "segments": 1749, "length_km": 277.5 } }
 }`,
   },
@@ -23,7 +23,7 @@ const endpoints = [
     method: "GET",
     path: "/api/v1/parking/streets?class=free&limit=5",
     desc: "Streets in one class, here the free ones, each with its rule counts",
-    response: `{ "count": 394, "streets": [
+    response: `{ "count": 1442, "streets": [
   { "street": "Glendale Ave", "class": "free",
     "length_km": 0.598, "rules_total": 9,
     "time_limited": 5, "bans": 4 }, … ] }`,
@@ -33,7 +33,7 @@ const endpoints = [
     path: "/api/v1/parking/streets?q=yonge",
     desc: "Streets matching a name, with their class and rule counts",
     response: `{ "count": 73, "streets": [
-  { "street": "Yonge St", "class": "noparking",
+  { "street": "Yonge St", "class": "free",
     "length_km": 17.766, "rules_total": 167,
     "time_limited": 15, "bans": 141 }, … ] }`,
   },
@@ -41,7 +41,7 @@ const endpoints = [
     method: "GET",
     path: "/api/v1/parking/streets/YONGE%20ST",
     desc: "One street in full: its class, its rules by kind, and every section",
-    response: `{ "street": "Yonge St", "class": "noparking",
+    response: `{ "street": "Yonge St", "class": "free",
   "rule_categories": { "no_stopping": 85, … },
   "count": 214,
   "segments": [

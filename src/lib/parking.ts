@@ -3,9 +3,9 @@ import path from "node:path";
 
 const DATA = path.join(process.cwd(), "data");
 
-export type ParkingClass = "free" | "norule" | "noparking" | "winter";
+export type ParkingClass = "free" | "norule" | "nofree" | "winter";
 
-export const CLASS_ORDER: ParkingClass[] = ["free", "norule", "noparking", "winter"];
+export const CLASS_ORDER: ParkingClass[] = ["free", "norule", "nofree", "winter"];
 
 export interface ClassTotals {
   streets: number;

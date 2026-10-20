@@ -5,8 +5,8 @@ import type { ReactNode } from "react";
 
 export type Lang = "en" | "fr";
 
-export type ClassKey = "free" | "norule" | "noparking" | "winter";
-export const CLASS_KEYS: ClassKey[] = ["free", "norule", "noparking", "winter"];
+export type ClassKey = "free" | "norule" | "nofree" | "winter";
+export const CLASS_KEYS: ClassKey[] = ["free", "norule", "nofree", "winter"];
 
 const en = {
   banner: {
@@ -17,26 +17,26 @@ const en = {
   hero: {
     kicker: "Open Nshipyard · Toronto Free Parking",
     title: "Toronto streets where parking is free",
-    lead: "Every Toronto street, coloured by what the parking rules the city itself publishes say about it. On 394 streets, parking is free with a time limit. On 7,423 streets, the city publishes no parking rule at all. On 4,674 streets, the published rules mostly ban parking. On 853 streets, the only rules are winter ones.",
+    lead: "Every Toronto street, coloured by what the parking rules the city itself publishes say about it. On 1,442 streets, part of the street is free to park on, with a time limit. On 7,423 streets, the city publishes no parking rule at all. On 3,626 streets, the published rules list no free parking. On 853 streets, the only rules are winter ones.",
     cta1: "Find your street",
     cta2: "How to read this map",
   },
   classNames: {
-    free: "Free, time limit applies",
+    free: "Free parking on part of this street",
     norule: "No parking rule published",
-    noparking: "No parking",
+    nofree: "No free parking in the published rules",
     winter: "Only winter rules",
   } as Record<ClassKey, string>,
   classBlurbs: {
-    free: "The street's published rules include parking for a limited time, free of charge.",
+    free: "The city publishes time-limited parking for part of this street, so part of it is free to park on. Other parts of the same street can be no parking, and a time limit applies where the free parking is. Check the signs where you stop.",
     norule: "The city publishes no parking rule for this street.",
-    noparking: "The street's published rules mostly ban parking.",
+    nofree: "Every parking rule the city publishes for this street is a ban: no parking, no stopping, or no standing. The published rules list no free parking on this street.",
     winter: "The street's only published rules are about winter or snow.",
   } as Record<ClassKey, string>,
   statsLabels: {
-    free: "streets where parking is free with a time limit",
+    free: "streets where part of the street is free to park on, with a time limit",
     norule: "streets with no parking rule published",
-    noparking: "streets where the published rules mostly ban parking",
+    nofree: "streets where the published rules list no free parking",
     winter: "streets whose only published rules are winter ones",
   } as Record<ClassKey, string>,
   streetsWord: "streets",
@@ -125,18 +125,18 @@ const en = {
     title: "What the colours mean, and what they do not.",
     intro: "Each street gets one colour, from the parking rules the City of Toronto publishes in its parking bylaw. The colour is a summary of the street's rules, nothing more.",
     defs: {
-      free: "Free, time limit applies. The street's published rules include parking for a limited time, and those rules are at least as many as its no parking, no stopping, and no standing rules put together. Free means the rules name no charge. It does not promise a space is open, and it does not promise the street has no meters, for the reason given below.",
+      free: "The city publishes time-limited parking for part of this street, so part of it is free to park on. Other parts of the same street can be no parking, and a time limit applies where the free parking is. Check the signs where you stop.",
       norule: "No parking rule published. The city's published parking rules do not mention this street at all. Most of these streets are small residential streets.",
-      noparking: "No parking. The street's no parking, no stopping, and no standing rules outnumber its time-limited parking rules. Most main streets land here.",
+      nofree: "Every parking rule the city publishes for this street is a ban: no parking, no stopping, or no standing. The published rules list no free parking on this street.",
       winter: "Only winter rules. The street's only published rules are about winter or snow, or a special use such as a school bus loading zone or a taxi stand. On all but 3 of these streets, the only rules are winter or snow rules, most of them winter bans on parking so plows can clear the street.",
     } as Record<ClassKey, string>,
     precedenceTitle: "How each street got its colour",
     precedence: [
-      "Every street is tested against the four colours in the order they are listed here, and the first one that fits wins.",
+      "Every street is tested against the four colours in the order they are listed here, and the first one that fits wins. What matters is which kinds of rules a street has, never how many of each kind it has.",
       "A street with no published rules at all is No parking rule published.",
-      "A street whose time-limited parking rules are at least as many as its ban rules, the no parking, no stopping, and no standing rules added together, is Free, time limit applies.",
-      "A street with more ban rules than time-limited parking rules is No parking.",
-      "A street left over, whose published rules are only about winter, snow, or a special use, is Only winter rules.",
+      "A street with published rules but no bans and no time-limited parking, whose rules are only about winter, snow, or a special use, is Only winter rules.",
+      "A street with at least one time-limited parking rule is Free parking on part of this street.",
+      "Any other street, one whose published rules are bans and nothing else, is No free parking in the published rules.",
     ],
     streetLevelNote: "One more thing about the counts: the bylaw names a street, a side, and a stretch in words. It does not pin most rules to one block. So the rule counts on this page belong to a whole street, and every section of a street shows the street's colour.",
     honestyTitle: "What this map cannot promise",
@@ -210,26 +210,26 @@ const fr: Dict = {
   hero: {
     kicker: "Open Nshipyard · Toronto Free Parking",
     title: "Les rues de Toronto où le stationnement est gratuit",
-    lead: "Chaque rue de Toronto, colorée selon ce que disent les règles de stationnement que la ville publie elle-même. Sur 394 rues, le stationnement est gratuit avec une limite de temps. Sur 7 423 rues, la ville ne publie aucune règle de stationnement. Sur 4 674 rues, les règles publiées interdisent surtout le stationnement. Sur 853 rues, les seules règles sont des règles d'hiver.",
+    lead: "Chaque rue de Toronto, colorée selon ce que disent les règles de stationnement que la ville publie elle-même. Sur 1 442 rues, une partie de la rue est gratuite pour stationner, avec une limite de temps. Sur 7 423 rues, la ville ne publie aucune règle de stationnement. Sur 3 626 rues, les règles publiées ne listent aucun stationnement gratuit. Sur 853 rues, les seules règles sont des règles d'hiver.",
     cta1: "Trouver votre rue",
     cta2: "Comment lire cette carte",
   },
   classNames: {
-    free: "Gratuit, avec limite de temps",
+    free: "Stationnement gratuit sur une partie de cette rue",
     norule: "Aucune règle de stationnement publiée",
-    noparking: "Stationnement interdit",
+    nofree: "Aucun stationnement gratuit dans les règles publiées",
     winter: "Règles d'hiver seulement",
   },
   classBlurbs: {
-    free: "Les règles publiées de la rue comprennent le stationnement pour une durée limitée, sans frais.",
+    free: "La ville publie du stationnement à durée limitée pour une partie de cette rue, alors une partie de la rue est gratuite pour stationner. D'autres parties de la même rue peuvent être interdites au stationnement, et une limite de temps s'applique là où le stationnement est gratuit. Vérifiez les panneaux où vous vous arrêtez.",
     norule: "La ville ne publie aucune règle de stationnement pour cette rue.",
-    noparking: "Les règles publiées de la rue interdisent surtout le stationnement.",
+    nofree: "Chaque règle de stationnement que la ville publie pour cette rue est une interdiction : stationnement interdit, arrêt interdit ou immobilisation interdite. Les règles publiées ne listent aucun stationnement gratuit sur cette rue.",
     winter: "Les seules règles publiées de la rue concernent l'hiver ou la neige.",
   },
   statsLabels: {
-    free: "rues où le stationnement est gratuit avec une limite de temps",
+    free: "rues où une partie de la rue est gratuite pour stationner, avec une limite de temps",
     norule: "rues sans aucune règle de stationnement publiée",
-    noparking: "rues où les règles publiées interdisent surtout le stationnement",
+    nofree: "rues où les règles publiées ne listent aucun stationnement gratuit",
     winter: "rues dont les seules règles publiées sont des règles d'hiver",
   },
   streetsWord: "rues",
@@ -318,18 +318,18 @@ const fr: Dict = {
     title: "Ce que les couleurs veulent dire, et ce qu'elles ne veulent pas dire.",
     intro: "Chaque rue reçoit une seule couleur, tirée des règles de stationnement que la Ville de Toronto publie dans son règlement de stationnement. La couleur est un résumé des règles de la rue, rien de plus.",
     defs: {
-      free: "Gratuit, avec limite de temps. Les règles publiées de la rue comprennent le stationnement pour une durée limitée, et ces règles sont au moins aussi nombreuses que ses règles d'interdiction de stationner, d'arrêt interdit et d'immobilisation interdite réunies. Gratuit veut dire que les règles ne nomment aucun tarif. Cela ne promet pas qu'une place est libre, et cela ne promet pas que la rue n'a pas de parcomètres, pour la raison donnée plus bas.",
+      free: "La ville publie du stationnement à durée limitée pour une partie de cette rue, alors une partie de la rue est gratuite pour stationner. D'autres parties de la même rue peuvent être interdites au stationnement, et une limite de temps s'applique là où le stationnement est gratuit. Vérifiez les panneaux où vous vous arrêtez.",
       norule: "Aucune règle de stationnement publiée. Les règles de stationnement publiées par la ville ne mentionnent pas cette rue du tout. La plupart de ces rues sont de petites rues résidentielles.",
-      noparking: "Stationnement interdit. Les règles d'interdiction de stationner, d'arrêt interdit et d'immobilisation interdite de la rue sont plus nombreuses que ses règles de stationnement à durée limitée. La plupart des grandes artères tombent ici.",
+      nofree: "Chaque règle de stationnement que la ville publie pour cette rue est une interdiction : stationnement interdit, arrêt interdit ou immobilisation interdite. Les règles publiées ne listent aucun stationnement gratuit sur cette rue.",
       winter: "Règles d'hiver seulement. Les seules règles publiées de la rue concernent l'hiver ou la neige, ou un usage spécial comme une zone de chargement d'autobus scolaire ou une station de taxis. Sur toutes ces rues sauf 3, les seules règles sont des règles d'hiver ou de neige, pour la plupart des interdictions hivernales de stationner pour laisser passer les chasse-neige.",
     },
     precedenceTitle: "Comment chaque rue a reçu sa couleur",
     precedence: [
-      "Chaque rue est testée contre les quatre couleurs dans l'ordre où elles sont listées ici, et la première qui convient l'emporte.",
+      "Chaque rue est testée contre les quatre couleurs dans l'ordre où elles sont listées ici, et la première qui convient l'emporte. Ce qui compte, c'est quels types de règles une rue a, jamais combien de règles de chaque type elle a.",
       "Une rue sans aucune règle publiée est Aucune règle de stationnement publiée.",
-      "Une rue dont les règles de stationnement à durée limitée sont au moins aussi nombreuses que ses règles d'interdiction, soit les règles d'interdiction de stationner, d'arrêt interdit et d'immobilisation interdite additionnées, est Gratuit, avec limite de temps.",
-      "Une rue avec plus de règles d'interdiction que de règles de stationnement à durée limitée est Stationnement interdit.",
-      "Une rue restante, dont les règles publiées ne concernent que l'hiver, la neige ou un usage spécial, est Règles d'hiver seulement.",
+      "Une rue avec des règles publiées mais aucune interdiction et aucun stationnement à durée limitée, dont les règles ne concernent que l'hiver, la neige ou un usage spécial, est Règles d'hiver seulement.",
+      "Une rue avec au moins une règle de stationnement à durée limitée est Stationnement gratuit sur une partie de cette rue.",
+      "Toute autre rue, dont les règles publiées sont des interdictions et rien d'autre, est Aucun stationnement gratuit dans les règles publiées.",
     ],
     streetLevelNote: "Encore une chose sur les comptes : le règlement nomme une rue, un côté et une étendue, en mots. Il n'attache presque aucune règle à un seul tronçon. Les comptes de règles sur cette page appartiennent donc à une rue entière, et chaque section d'une rue affiche la couleur de la rue.",
     honestyTitle: "Ce que cette carte ne peut pas promettre",

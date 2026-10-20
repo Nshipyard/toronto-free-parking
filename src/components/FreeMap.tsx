@@ -28,7 +28,7 @@ const TILE_URL =
 export const CLASS_COLOURS: Record<ClassKey, string> = {
   free: "#2e7d32",
   norule: "#7fa6c4",
-  noparking: "#b23a2e",
+  nofree: "#b23a2e",
   winter: "#7d5ba6",
 };
 

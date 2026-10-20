@@ -8,7 +8,7 @@ const TOOLS = [
   {
     name: "parking_summary",
     description:
-      "Headline counts for Toronto Free Parking: streets, sections, total length, and the count of streets, sections, and kilometres in each parking class (free, norule, noparking, winter), plus why paid parking is not classified.",
+      "Headline counts for Toronto Free Parking: streets, sections, total length, and the count of streets, sections, and kilometres in each parking class (free, norule, nofree, winter), plus why paid parking is not classified.",
     inputSchema: { type: "object", properties: {} },
   },
   {
@@ -21,7 +21,7 @@ const TOOLS = [
         q: { type: "string", description: "Substring of the street name, e.g. 'yonge'" },
         class: {
           type: "string",
-          enum: ["free", "norule", "noparking", "winter"],
+          enum: ["free", "norule", "nofree", "winter"],
           description: "Only streets in this class",
         },
         limit: { type: "number", description: "Max streets to return (default 20, max 200)" },

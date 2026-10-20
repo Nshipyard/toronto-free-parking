@@ -6,7 +6,7 @@ const spec = {
     title: "Toronto Free Parking API",
     version: "1.0.0",
     description:
-      "Every Toronto street classified by what the parking rules the city itself publishes say about it: free with a time limit, no parking rule published, no parking, or only winter rules. Built from City of Toronto open data (parking bylaw, Chapter 950, and parking tickets 2023-2025) combined by the sister project Toronto Open Street Parking. Paid parking is deliberately not classified: the published bylaw schedules contain no paid or metered category.",
+      "Every Toronto street classified by what the parking rules the city itself publishes say about it: free parking on part of the street, no parking rule published, no free parking in the published rules, or only winter rules. Built from City of Toronto open data (parking bylaw, Chapter 950, and parking tickets 2023-2025) combined by the sister project Toronto Open Street Parking. Paid parking is deliberately not classified: the published bylaw schedules contain no paid or metered category.",
     license: { name: "MIT" },
   },
   servers: [{ url: "https://free-parking.canada.nshipyard.com/api/v1" }],
@@ -24,7 +24,7 @@ const spec = {
         operationId: "parkingStreets",
         parameters: [
           { name: "q", in: "query", schema: { type: "string" }, description: "Substring match on the street name" },
-          { name: "class", in: "query", schema: { type: "string", enum: ["free", "norule", "noparking", "winter"] }, description: "Only streets in this class" },
+          { name: "class", in: "query", schema: { type: "string", enum: ["free", "norule", "nofree", "winter"] }, description: "Only streets in this class" },
           { name: "limit", in: "query", schema: { type: "integer", default: 50, maximum: 200 } },
         ],
         responses: { "200": { description: "Matching streets (count is the full match count)" } },

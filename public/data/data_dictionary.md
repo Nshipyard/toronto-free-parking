@@ -13,13 +13,17 @@ because the city publishes its parking rules by street, not by section.
 
 | class | name on the map | meaning |
 | --- | --- | --- |
-| `free` | Free, time limit applies | The street has time-limited parking rules, and they are at least as many as its no parking, no stopping, and no standing rules combined. |
 | `norule` | No parking rule published | The city's published rules list no parking rule for this street at all. |
-| `noparking` | No parking | The street's no parking, no stopping, and no standing rules outnumber its time-limited parking rules. |
-| `winter` | Only winter rules | The street's only published rules are winter or snow rules, or a special use such as a school bus loading zone or a taxi stand. Nothing in the published rules speaks to everyday parking. |
+| `winter` | Only winter rules | The street has published rules but no bans and no time-limited parking. Its only published rules are winter or snow rules, or a special use such as a school bus loading zone or a taxi stand. Nothing in the published rules speaks to everyday parking. |
+| `free` | Free parking on part of this street | The city publishes time-limited parking for part of this street, so part of it is free to park on. Other parts of the same street can be no parking, and a time limit applies where the free parking is. Check the signs where you stop. |
+| `nofree` | No free parking in the published rules | Every parking rule the city publishes for this street is a ban: no parking, no stopping, or no standing. The published rules list no free parking on this street. |
 
 The classes are applied in the order listed: the first one that matches a
-street wins.
+street wins. Only presence matters, never how the counts of two kinds
+compare: a street with one time-limited parking rule is `free` even if it
+also has ten ban rules, because part of it is free to park on. (An earlier
+version compared the counts; the class key for the ban-only class was
+`noparking` and is now `nofree`.)
 
 There is no paid class. The parking rules the city publishes as open data
 contain no paid or metered parking category, and no open file says which
@@ -37,9 +41,10 @@ shown as free can still have paid meters on it.
 - `rules_total`: the street's published parking rules (current Chapter 950
   rules, all kinds).
 - `no_parking_rules`, `no_stopping_rules`, `no_standing_rules`,
-  `time_limited_rules`: the street's published rules of each kind. Their
-  sum is the `bans` figure the classification uses (the first three) and
-  the `timed` figure (the fourth).
+  `time_limited_rules`: the street's published rules of each kind. The
+  classification looks only at whether each count is zero or not: the
+  first three are the ban kinds, the fourth is what puts a street in the
+  `free` class.
 - `winter_rules`: the street's winter parking prohibited and snow storm
   parking rules.
 - `tickets_2023_2025`: parking tickets written on the street, 2023 to

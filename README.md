@@ -1,10 +1,11 @@
 # Toronto Free Parking
 
 **Toronto streets where parking is free.** Every Toronto street, coloured by
-what the parking rules the city itself publishes say about it. On 394
-streets, parking is free with a time limit. On 7,423 streets, the city
-publishes no parking rule at all. On 4,674 streets, the published rules
-mostly ban parking. On 853 streets, the only rules are winter ones.
+what the parking rules the city itself publishes say about it. On 1,442
+streets, part of the street is free to park on, with a time limit. On 7,423
+streets, the city publishes no parking rule at all. On 3,626 streets, the
+published rules list no free parking. On 853 streets, the only rules are
+winter ones.
 
 Live site: https://toronto-free-parking.vercel.app
 
@@ -14,21 +15,40 @@ and the classified data as downloads.
 
 ## The four classes
 
-Every street gets exactly one class, from the counts of its published
+Every street gets exactly one class, from the kinds of its published
 parking rules (City of Toronto parking bylaw, Chapter 950, current rules).
-The tests run in this order, and the first that matches wins:
+Presence decides, never a comparison of counts: how many rules of a kind a
+street has is an artifact of how the bylaw is written, so a street with one
+time-limited parking rule and ten ban rules still has free parking on part
+of it. The tests run in this order, and the first that matches wins:
 
 1. **No parking rule published** (`norule`): the street has no published
    rules at all. 7,423 streets, 15,325 sections.
-2. **Free, time limit applies** (`free`): the street has time-limited
-   parking rules, and they are at least as many as its bans (no parking +
-   no stopping + no standing rules combined). 394 streets, 1,412 sections.
-3. **No parking** (`noparking`): the street's bans outnumber its
-   time-limited parking rules. 4,674 streets, 31,541 sections.
-4. **Only winter rules** (`winter`): everything left over. The street's
-   only published rules are winter or snow rules, or a special use such as
-   a school bus loading zone or a taxi stand. 853 streets, 1,749 sections.
-   On all but 3 of these, the only rules are winter or snow rules.
+2. **Only winter rules** (`winter`): the street has published rules but no
+   bans and no time-limited parking. Its only rules are winter or snow
+   rules, or a special use such as a school bus loading zone or a taxi
+   stand. 853 streets, 1,749 sections. On all but 3 of these, the only
+   rules are winter or snow rules.
+3. **Free parking on part of this street** (`free`): the city publishes
+   time-limited parking for part of this street, so part of it is free to
+   park on. Other parts of the same street can be no parking, and a time
+   limit applies where the free parking is. Check the signs where you
+   stop. 1,442 streets, 15,427 sections.
+4. **No free parking in the published rules** (`nofree`): every parking
+   rule the city publishes for this street is a ban: no parking, no
+   stopping, or no standing. The published rules list no free parking on
+   this street. 3,626 streets, 17,526 sections.
+
+The four classes cover all 13,344 streets and 50,027 sections.
+
+> **Classification change, 2026-10-20.** The first version compared rule
+> counts: a street was "Free, time limit applies" only when its
+> time-limited rules were at least as many as its bans, and "No parking"
+> when bans outnumbered them. That labelled streets like High Park Ave "No
+> parking" even though part of the street has free time-limited parking.
+> The classification is now presence-based, as above. In the API, the
+> class key `noparking` was renamed `nofree`, and the `free` class now
+> covers every street with at least one time-limited parking rule.
 
 ### Why there is no paid class
 
@@ -86,7 +106,7 @@ machines on it.
 ## API
 
 - `GET /api/v1/parking/summary` — streets, sections, and counts per class.
-- `GET /api/v1/parking/streets?q=yonge&class=noparking&limit=50` — search
+- `GET /api/v1/parking/streets?q=yonge&class=nofree&limit=50` — search
   streets by name and/or class.
 - `GET /api/v1/parking/streets/YONGE%20ST` — one street in full: class,
   rules by kind, and every section.
@@ -110,6 +130,8 @@ English and French throughout (toggle in the header). Next.js 16, React
 ## Screenshots
 
 ![Desktop](docs/screenshots/desktop.png)
+![High Park Ave open](docs/screenshots/street-high-park.png)
+![Near me near High Park](docs/screenshots/nearme-high-park.png)
 ![Yonge St open](docs/screenshots/street-yonge.png)
 ![Mobile](docs/screenshots/mobile.png)
 

@@ -25,22 +25,27 @@ Outputs:
   data/data_dictionary.md         what each column means (also in public/)
 
 THE CLASSIFICATION (precedence order; the first rule that matches wins).
-Rule counts in the combined file belong to a whole street: the bylaw names a
-street, not a section, so every section of a street carries the street's
-counts, and the class is a property of the street.
+Presence decides, never a comparison of counts: how many rules of a kind a
+street has is an artifact of how the bylaw is written, so a street with one
+time-limited parking rule and ten ban rules still has free parking on part
+of it. Rule counts in the combined file belong to a whole street: the bylaw
+names a street, not a section, so every section of a street carries the
+street's counts, and the class is a property of the street.
 
   bans  = no parking rules + no stopping rules + no standing rules
   timed = time-limited parking rules
 
   1. The street has no published rules at all (rules total is 0)
        -> "norule"   No parking rule published
-  2. Timed rules exist and are at least as many as the bans
-       -> "free"     Free, time limit applies
-  3. Bans exist and outnumber the timed rules
-       -> "noparking"  No parking
-  4. Anything else: the street's only rules are winter or snow rules, or a
-     special use (school bus loading, a taxi stand)
+  2. The street has published rules but no bans and no time-limited
+     parking: its only rules are winter or snow rules, or a special use
+     (school bus loading, a taxi stand)
        -> "winter"   Only winter rules
+  3. The street has at least one time-limited parking rule
+       -> "free"     Free parking on part of this street
+  4. Anything else: rules exist, none of them time-limited, and at least
+     one is a ban, so the published rules list no free parking
+       -> "nofree"   No free parking in the published rules
 
 Paid parking is NOT a class. The Chapter 950 schedules the city publishes
 as open data contain no paid or metered parking category at all (a text
@@ -66,17 +71,17 @@ RULE_CATS = [
     "permitted_angle_parking", "reserved_lane",
 ]
 
-CLASS_ORDER = ["free", "norule", "noparking", "winter"]
+CLASS_ORDER = ["free", "norule", "nofree", "winter"]
 
 
 def classify(total, bans, timed):
     if total == 0:
         return "norule"
-    if timed > 0 and timed >= bans:
+    if bans == 0 and timed == 0:
+        return "winter"
+    if timed >= 1:
         return "free"
-    if bans > 0:
-        return "noparking"
-    return "winter"
+    return "nofree"
 
 
 def num(v):

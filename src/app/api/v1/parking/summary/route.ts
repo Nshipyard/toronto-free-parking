@@ -6,9 +6,9 @@ export async function GET() {
   return NextResponse.json({
     ...s,
     class_names: {
-      free: "Free, time limit applies",
+      free: "Free parking on part of this street",
       norule: "No parking rule published",
-      noparking: "No parking",
+      nofree: "No free parking in the published rules",
       winter: "Only winter rules",
     },
     paid_parking: {
